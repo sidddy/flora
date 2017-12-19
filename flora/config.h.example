@@ -1,6 +1,6 @@
 #define FLORA_ADDR "11:22:33:44:55:66"
 
-#define MQTT_BASE "/flora/"
+#define MQTT_BASE "flora/"
 #define MQTT_DEV_BASE MQTT_BASE FLORA_ADDR "/"
 
 #define MQTT_TEMPERATURE MQTT_DEV_BASE "temperature"
