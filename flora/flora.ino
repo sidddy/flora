@@ -96,7 +96,7 @@ bool getSensorData(BLEAddress pAddress) {
   }
   Serial.println(" ");
 
-  float temp = (val[0] + val[1] * 256) / 10;
+  float temp = (val[0] + val[1] * 256) / ((float)10.0);
   int moisture = val[7];
   int light = val[3] + val[4] * 256;
   int conductivity = val[8] + val[9] * 256;
