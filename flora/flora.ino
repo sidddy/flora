@@ -57,7 +57,9 @@ bool getSensorData(BLEAddress pAddress, bool getBattery) {
   BLEClient*  pClient  = BLEDevice::createClient();
 
   // Connect to the remove BLE Server.
-  pClient->connect(pAddress);
+  if (!pClient->connect(pAddress)) {
+      return false;
+  }
   Serial.println(" - Connected to Flora");
 
   // Obtain a reference to the service we are after in the remote BLE server.
