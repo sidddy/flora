@@ -30,6 +30,8 @@
 
 #include "config.h"
 
+RTC_DATA_ATTR int bootCount = 0;
+
 // The remote service we wish to connect to.
 static BLEUUID serviceUUID("00001204-0000-1000-8000-00805f9b34fb");
 
@@ -48,7 +50,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 
-bool getSensorData(BLEAddress pAddress) {
+bool getSensorData(BLEAddress pAddress, bool getBattery) {
   Serial.print("Forming a connection to Flora device at ");
   Serial.println(pAddress.toString().c_str());
 
@@ -124,6 +126,34 @@ bool getSensorData(BLEAddress pAddress) {
   snprintf(buffer, 64, "%d", conductivity);
   client.publish(MQTT_CONDUCTIVITY, buffer);
 
+  if (getBattery) {
+    Serial.println("Trying to retrieve battery level...");
+    pRemoteCharacteristic = pRemoteService->getCharacteristic(uuid_version_battery);
+    if (pRemoteCharacteristic == nullptr) {
+      Serial.print("Failed to find our characteristic UUID: ");
+      Serial.println(uuid_sensor_data.toString().c_str()); 
+      return false;
+    }
+    Serial.println(" - Found our characteristic");
+
+    // Read the value of the characteristic...
+    value = pRemoteCharacteristic->readValue();
+    Serial.print("The characteristic value was: ");
+    const char *val2 = value.c_str();
+    Serial.print("Hex: ");
+    for (int i = 0; i < 16; i++) {
+      Serial.print((int)val2[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println(" ");
+
+    int battery = val2[0];
+    Serial.print("Battery: ");
+    Serial.println(battery);
+    snprintf(buffer, 64, "%d", battery);
+    client.publish(MQTT_BATTERY, buffer);
+  }
+
   pClient->disconnect();
 }
 
@@ -179,7 +209,8 @@ void setup() {
 
   delay(1000);
 
-  getSensorData(floraAddress);
+  getSensorData(floraAddress, ((bootCount % BATTERY_INTERVAL) == 0));
+  bootCount++;
 } // End of setup.
 
 

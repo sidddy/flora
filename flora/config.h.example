@@ -7,9 +7,12 @@
 #define MQTT_MOISTURE MQTT_DEV_BASE "moisture"
 #define MQTT_LIGHT MQTT_DEV_BASE "light"
 #define MQTT_CONDUCTIVITY MQTT_DEV_BASE "conductivity"
+#define MQTT_BATTERY MQTT_DEV_BASE "battery"
 
 #define SLEEP_DURATION 3600ll // duration of sleep between flora connection attempts in seconds (must be constant with "ll" suffix)
 #define SLEEP_WAIT 30         // time until esp32 is put into deep sleep mode. must be sufficient to connect to wlan, connect to xiaomi flora device & push measurement data to MQTT
+
+#define BATTERY_INTERVAL 12   // Retrieve battery level every n wakeups
 
 const char* wifi_ssid     = "ssid";
 const char* wifi_password = "password";
