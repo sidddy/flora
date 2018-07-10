@@ -56,7 +56,7 @@ bool getSensorData(BLEAddress pAddress, bool getBattery) {
 
   BLEClient*  pClient  = BLEDevice::createClient();
 
-  // Connect to the remove BLE Server.
+  // Connect to the remote BLE Server.
   if (!pClient->connect(pAddress)) {
       return false;
   }
@@ -90,15 +90,7 @@ bool getSensorData(BLEAddress pAddress, bool getBattery) {
 
   // Read the value of the characteristic.
   std::string value = pRemoteCharacteristic->readValue();
-  Serial.print("The characteristic value was: ");
   const char *val = value.c_str();
-
-  Serial.print("Hex: ");
-  for (int i = 0; i < 16; i++) {
-    Serial.print((int)val[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println(" ");
 
   float temp = (val[0] + val[1] * 256) / ((float)10.0);
   int moisture = val[7];
@@ -112,7 +104,6 @@ bool getSensorData(BLEAddress pAddress, bool getBattery) {
   snprintf(buffer, 64, "%f", temp);
   client.publish(MQTT_TEMPERATURE, buffer);
   
-
   Serial.print("Moisture: ");
   Serial.println(moisture);
   snprintf(buffer, 64, "%d", moisture);
