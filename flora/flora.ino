@@ -318,7 +318,7 @@ void hibernate() {
 }
 
 void delayedHibernate(void *parameter) {
-  delay(EMERGENCY_HIBERNATE); // delay for five minutes
+  delay(EMERGENCY_HIBERNATE*1000); // delay for five minutes
   Serial.println("Something got stuck, entering emergency hibernate...");
   hibernate();
 }
