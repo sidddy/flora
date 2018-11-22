@@ -189,7 +189,8 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   }
   Serial.println(" ");
 
-  float temperature = (val[0] + val[1] * 256) / ((float)10.0);
+  int16_t* temp_raw = (int16_t*)val;
+  float temperature = (*temp_raw) / ((float)10.0);
   Serial.print("-- Temperature: ");
   Serial.println(temperature);
 
