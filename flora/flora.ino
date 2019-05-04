@@ -4,9 +4,9 @@
    See https://github.com/nkolban/esp32-snippets/blob/master/Documentation/BLE%20C%2B%2B%20Guide.pdf
    on how bluetooth low energy and the library used are working.
 
-   See https://github.com/ChrisScheffler/miflora/wiki/The-Basics for details on how the 
+   See https://github.com/ChrisScheffler/miflora/wiki/The-Basics for details on how the
    protocol is working.
-   
+
    MIT License
 
    Copyright (c) 2017 Sven Henkel
@@ -40,8 +40,8 @@
 // boot count used to check if battery status should be read
 RTC_DATA_ATTR int bootCount = 0;
 
-// device count
-static int deviceCount = sizeof FLORA_DEVICES / sizeof FLORA_DEVICES[0];
+// Root service for Flora Devices
+static BLEUUID rootServiceDataUUID((uint16_t) 0xfe95);
 
 // the remote service we wish to connect to
 static BLEUUID serviceUUID("00001204-0000-1000-8000-00805f9b34fb");
@@ -101,7 +101,8 @@ BLEClient* getFloraClient(BLEAddress floraAddress) {
   BLEClient* floraClient = BLEDevice::createClient();
 
   if (!floraClient->connect(floraAddress)) {
-    Serial.println("- Connection failed, skipping");
+    Serial.print("- Connection failed, skipping ");
+    Serial.println(floraAddress.toString().c_str());
     return nullptr;
   }
 
@@ -130,7 +131,7 @@ BLERemoteService* getFloraService(BLEClient* floraClient) {
 
 bool forceFloraServiceDataMode(BLERemoteService* floraService) {
   BLERemoteCharacteristic* floraCharacteristic;
-  
+
   // get device mode characteristic, needs to be changed to read data
   Serial.println("- Force device in data mode");
   floraCharacteristic = nullptr;
@@ -172,7 +173,7 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   // read characteristic value
   Serial.println("- Read value from characteristic");
   std::string value;
-  try{
+  try {
     value = floraCharacteristic->readValue();
   }
   catch (...) {
@@ -201,7 +202,7 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   int light = val[3] + val[4] * 256;
   Serial.print("-- Light: ");
   Serial.println(light);
- 
+
   int conductivity = val[8] + val[9] * 256;
   Serial.print("-- Conductivity: ");
   Serial.println(conductivity);
@@ -214,13 +215,15 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   char buffer[64];
 
   snprintf(buffer, 64, "%f", temperature);
-  client.publish((baseTopic + "temperature").c_str(), buffer); 
-  snprintf(buffer, 64, "%d", moisture); 
-  client.publish((baseTopic + "moisture").c_str(), buffer);
+  client.publish((baseTopic + "temperature").c_str(), buffer, true);
+  snprintf(buffer, 64, "%d", moisture);
+  client.publish((baseTopic + "moisture").c_str(), buffer, true);
   snprintf(buffer, 64, "%d", light);
-  client.publish((baseTopic + "light").c_str(), buffer);
+  client.publish((baseTopic + "light").c_str(), buffer, true);
   snprintf(buffer, 64, "%d", conductivity);
-  client.publish((baseTopic + "conductivity").c_str(), buffer);
+  client.publish((baseTopic + "conductivity").c_str(), buffer, true);
+
+  Serial.println("MQTT pub for topic: " + baseTopic);
 
   return true;
 }
@@ -244,7 +247,7 @@ bool readFloraBatteryCharacteristic(BLERemoteService* floraService, String baseT
   // read characteristic value
   Serial.println("- Read value from characteristic");
   std::string value;
-  try{
+  try {
     value = floraCharacteristic->readValue();
   }
   catch (...) {
@@ -260,12 +263,12 @@ bool readFloraBatteryCharacteristic(BLERemoteService* floraService, String baseT
   Serial.print("-- Battery: ");
   Serial.println(battery);
   snprintf(buffer, 64, "%d", battery);
-  client.publish((baseTopic + "battery").c_str(), buffer);
+  client.publish((baseTopic + "battery").c_str(), buffer, true);
 
   return true;
 }
 
-bool processFloraService(BLERemoteService* floraService, char* deviceMacAddress, bool readBattery) {
+bool processFloraService(BLERemoteService* floraService, const char* deviceMacAddress, bool readBattery) {
   // set device in data mode
   if (!forceFloraServiceDataMode(floraService)) {
     return false;
@@ -282,7 +285,7 @@ bool processFloraService(BLERemoteService* floraService, char* deviceMacAddress,
   return dataSuccess && batterySuccess;
 }
 
-bool processFloraDevice(BLEAddress floraAddress, char* deviceMacAddress, bool getBattery, int tryCount) {
+bool processFloraDevice(BLEAddress floraAddress, bool getBattery, int tryCount) {
   Serial.print("Processing Flora device at ");
   Serial.print(floraAddress.toString().c_str());
   Serial.print(" (try ");
@@ -303,7 +306,7 @@ bool processFloraDevice(BLEAddress floraAddress, char* deviceMacAddress, bool ge
   }
 
   // process devices data
-  bool success = processFloraService(floraService, deviceMacAddress, getBattery);
+  bool success = processFloraService(floraService, floraAddress.toString().c_str(), getBattery);
 
   // disconnect from device
   floraClient->disconnect();
@@ -319,10 +322,85 @@ void hibernate() {
 }
 
 void delayedHibernate(void *parameter) {
-  delay(EMERGENCY_HIBERNATE*1000); // delay for five minutes
+  delay(EMERGENCY_HIBERNATE * 1000); // delay for five minutes
   Serial.println("Something got stuck, entering emergency hibernate...");
   hibernate();
 }
+
+// before setup()
+static void my_gattc_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t* param) {
+  ESP_LOGW(LOG_TAG, "custom gattc event handler, event: %d", (uint8_t)event);
+  if (event == ESP_GATTC_DISCONNECT_EVT) {
+    Serial.print("Disconnect reason: ");
+    Serial.println((int)param->disconnect.reason);
+  }
+}
+
+
+class FloraDevicesScanner {
+  public:
+    // Scan BLE and return true if flora devices are found
+    bool scan();
+
+    int getDeviceCount() const {
+      return _deviceCount;
+    }
+
+    std::string getDeviceAddress(int i) const {
+      if (i < _deviceCount)
+        return _devices[i];
+      else
+        return std::string();
+    }
+
+  private:
+    std::string _devices[MAX_DEVICES];
+    int         _deviceCount = 0;
+
+    void registerDevice(BLEAdvertisedDevice& advertisedDevice) {
+      std::string deviceAddress(advertisedDevice.getAddress().toString());
+      Serial.print("Flora device found at address ");
+      Serial.println(deviceAddress.c_str());
+      
+      if (_deviceCount < MAX_DEVICES)
+        _devices[_deviceCount++] = deviceAddress;
+      else
+        Serial.println("can't register device, no remaining slot");
+    }
+
+};
+
+bool FloraDevicesScanner::scan() {
+  Serial.println("Scan BLE, looking for Flora Devices");
+
+  // detect and register Flora devices during BLE scan
+  class FloraDevicesBLEDetector: public BLEAdvertisedDeviceCallbacks {
+    public:
+      FloraDevicesBLEDetector(FloraDevicesScanner &floraScanner) : _floraScanner(floraScanner) { }
+      
+      void onResult(BLEAdvertisedDevice advertisedDevice)
+      {
+        if (advertisedDevice.haveServiceUUID()) {
+          BLEUUID service = advertisedDevice.getServiceUUID();
+          if (service.equals(rootServiceDataUUID))
+            _floraScanner.registerDevice(advertisedDevice);
+        }
+      }
+      
+    private:
+      FloraDevicesScanner& _floraScanner;
+  };
+  
+  BLEScan* scan = BLEDevice::getScan();
+  FloraDevicesBLEDetector floraDetector(*this);
+  scan->setAdvertisedDeviceCallbacks(&floraDetector);
+  scan->start(BLE_SCAN_DURATION);
+  
+  Serial.print("Number of Flora devices detected: ");
+  Serial.println(_deviceCount);
+  return (_deviceCount > 0);
+}
+
 
 void setup() {
   // all action is done when device is woken up
@@ -336,35 +414,40 @@ void setup() {
   xTaskCreate(delayedHibernate, "hibernate", 4096, NULL, 1, &hibernateTaskHandle);
 
   Serial.println("Initialize BLE client...");
+  // BLEDevice::setCustomGattcHandler(my_gattc_event_handler);  // before BLEDevice::init();
   BLEDevice::init("");
   BLEDevice::setPower(ESP_PWR_LVL_P7);
 
-  // connecting wifi and mqtt server
-  connectWifi();
-  connectMqtt();
+  FloraDevicesScanner floraScanner;
+  if (floraScanner.scan()) {
 
-  // check if battery status should be read - based on boot count
-  bool readBattery = ((bootCount % BATTERY_INTERVAL) == 0);
+    // connecting wifi and mqtt server
+    connectWifi();
+    connectMqtt();
 
-  // process devices
-  for (int i=0; i<deviceCount; i++) {
-    int tryCount = 0;
-    char* deviceMacAddress = FLORA_DEVICES[i];
-    BLEAddress floraAddress(deviceMacAddress);
+    // check if battery status should be read - based on boot count
+    bool readBattery = ((bootCount % BATTERY_INTERVAL) == 0);
+    if (readBattery) Serial.println("Battery will be read during this run");
 
-    while (tryCount < RETRY) {
-      tryCount++;
-      if (processFloraDevice(floraAddress, deviceMacAddress, readBattery, tryCount)) {
-        break;
+    // process devices
+    for (int i = 0; i < floraScanner.getDeviceCount(); i++) {
+      int tryCount = 0;
+      BLEAddress floraAddress(floraScanner.getDeviceAddress(i));
+
+      while (tryCount < RETRY) {
+        tryCount++;
+        if (processFloraDevice(floraAddress, readBattery, tryCount)) {
+          break;
+        }
+        delay(1000);
       }
-      delay(1000);
+      delay(1500);
     }
-    delay(1500);
-  }
 
-  // disconnect wifi and mqtt
-  disconnectWifi();
-  disconnectMqtt();
+    // disconnect wifi and mqtt
+    disconnectWifi();
+    disconnectMqtt();
+  }
 
   // delete emergency hibernate task
   vTaskDelete(hibernateTaskHandle);
