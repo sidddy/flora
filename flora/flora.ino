@@ -56,6 +56,15 @@ TaskHandle_t hibernateTaskHandle = NULL;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+typedef struct floraData {
+  float temperature;
+  int moisture;
+  int light;
+  int conductivity;
+  int battery;
+  bool success;
+} floraData;
+
 void connectWifi() {
   Serial.println("Connecting to WiFi...");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -153,7 +162,7 @@ bool forceFloraServiceDataMode(BLERemoteService* floraService) {
   return true;
 }
 
-bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopic) {
+bool readFloraDataCharacteristic(BLERemoteService* floraService, struct floraData* retData) {
   BLERemoteCharacteristic* floraCharacteristic = nullptr;
 
   // get the main device data characteristic
@@ -206,26 +215,20 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   Serial.print("-- Conductivity: ");
   Serial.println(conductivity);
 
-  if (temperature > 200) {
+  if ((temperature > 200) || (temperature < -100)) {
     Serial.println("-- Unreasonable values received, skip publish");
     return false;
   }
 
-  char buffer[64];
-
-  snprintf(buffer, 64, "%f", temperature);
-  client.publish((baseTopic + "temperature").c_str(), buffer); 
-  snprintf(buffer, 64, "%d", moisture); 
-  client.publish((baseTopic + "moisture").c_str(), buffer);
-  snprintf(buffer, 64, "%d", light);
-  client.publish((baseTopic + "light").c_str(), buffer);
-  snprintf(buffer, 64, "%d", conductivity);
-  client.publish((baseTopic + "conductivity").c_str(), buffer);
+  retData->temperature = temperature;
+  retData->moisture = moisture;
+  retData->light = light;
+  retData->conductivity = conductivity;
 
   return true;
 }
 
-bool readFloraBatteryCharacteristic(BLERemoteService* floraService, String baseTopic) {
+bool readFloraBatteryCharacteristic(BLERemoteService* floraService, struct floraData* retData) {
   BLERemoteCharacteristic* floraCharacteristic = nullptr;
 
   // get the device battery characteristic
@@ -255,34 +258,31 @@ bool readFloraBatteryCharacteristic(BLERemoteService* floraService, String baseT
   const char *val2 = value.c_str();
   int battery = val2[0];
 
-  char buffer[64];
-
   Serial.print("-- Battery: ");
   Serial.println(battery);
-  snprintf(buffer, 64, "%d", battery);
-  client.publish((baseTopic + "battery").c_str(), buffer);
+  retData->battery = battery;
 
   return true;
 }
 
-bool processFloraService(BLERemoteService* floraService, char* deviceMacAddress, bool readBattery) {
+bool processFloraService(BLERemoteService* floraService, bool readBattery, struct floraData* retData) {
   // set device in data mode
   if (!forceFloraServiceDataMode(floraService)) {
     return false;
   }
 
-  String baseTopic = MQTT_BASE_TOPIC + "/" + deviceMacAddress + "/";
-  bool dataSuccess = readFloraDataCharacteristic(floraService, baseTopic);
+  bool dataSuccess = readFloraDataCharacteristic(floraService, retData);
 
   bool batterySuccess = true;
   if (readBattery) {
-    batterySuccess = readFloraBatteryCharacteristic(floraService, baseTopic);
+    batterySuccess = readFloraBatteryCharacteristic(floraService, retData);
   }
 
-  return dataSuccess && batterySuccess;
+  retData->success = dataSuccess && batterySuccess;
+  return retData->success;
 }
 
-bool processFloraDevice(BLEAddress floraAddress, char* deviceMacAddress, bool getBattery, int tryCount) {
+bool processFloraDevice(BLEAddress floraAddress, bool getBattery, int tryCount, struct floraData* retData) {
   Serial.print("Processing Flora device at ");
   Serial.print(floraAddress.toString().c_str());
   Serial.print(" (try ");
@@ -303,7 +303,7 @@ bool processFloraDevice(BLEAddress floraAddress, char* deviceMacAddress, bool ge
   }
 
   // process devices data
-  bool success = processFloraService(floraService, deviceMacAddress, getBattery);
+  bool success = processFloraService(floraService, getBattery, retData);
 
   // disconnect from device
   floraClient->disconnect();
@@ -329,6 +329,12 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  // check if battery status should be read - based on boot count
+  bool readBattery = ((bootCount % BATTERY_INTERVAL) == 0);
+
+  Serial.print("Boot number: ");
+  Serial.println(bootCount);
+
   // increase boot count
   bootCount++;
 
@@ -339,12 +345,7 @@ void setup() {
   BLEDevice::init("");
   BLEDevice::setPower(ESP_PWR_LVL_P7);
 
-  // connecting wifi and mqtt server
-  connectWifi();
-  connectMqtt();
-
-  // check if battery status should be read - based on boot count
-  bool readBattery = ((bootCount % BATTERY_INTERVAL) == 0);
+  struct floraData* deviceData = (struct floraData*)malloc(deviceCount * sizeof(struct floraData));
 
   // process devices
   for (int i=0; i<deviceCount; i++) {
@@ -354,13 +355,49 @@ void setup() {
 
     while (tryCount < RETRY) {
       tryCount++;
-      if (processFloraDevice(floraAddress, deviceMacAddress, readBattery, tryCount)) {
+      if (processFloraDevice(floraAddress, readBattery, tryCount, &(deviceData[i]))) {
         break;
       }
       delay(1000);
     }
     delay(1500);
   }
+
+  // connecting wifi and mqtt server
+  connectWifi();
+  connectMqtt();
+
+  delay(1000);
+
+  for (int i=0; i<deviceCount; i++) {
+    if (deviceData[i].success) {
+      char* deviceMacAddress = FLORA_DEVICES[i];
+      String baseTopic = MQTT_BASE_TOPIC + "/" + deviceMacAddress + "/";
+
+      Serial.print("Publishing data for ");
+      Serial.print(deviceMacAddress);
+      Serial.print(" to ");
+      Serial.println(baseTopic);
+
+      char buffer[64];
+
+      snprintf(buffer, 64, "%f", deviceData[i].temperature);
+      client.publish((baseTopic + "temperature").c_str(), buffer);
+      snprintf(buffer, 64, "%d", deviceData[i].moisture);
+      client.publish((baseTopic + "moisture").c_str(), buffer);
+      snprintf(buffer, 64, "%d", deviceData[i].light);
+      client.publish((baseTopic + "light").c_str(), buffer);
+      snprintf(buffer, 64, "%d", deviceData[i].conductivity);
+      client.publish((baseTopic + "conductivity").c_str(), buffer);
+      if (readBattery) {
+        snprintf(buffer, 64, "%d", deviceData[i].battery);
+        client.publish((baseTopic + "battery").c_str(), buffer);
+      }
+      delay(200);
+    }
+  }
+
+  delay(1000);
 
   // disconnect wifi and mqtt
   disconnectWifi();
