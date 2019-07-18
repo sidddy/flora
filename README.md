@@ -1,6 +1,6 @@
 ## flora
 
-This arduino sketch implements an ESP32 BLE client for Xiaomi Mi Flora Plant sensors, pushing the meassurements to an MQTT server.
+This arduino sketch implements an ESP32 BLE client for Xiaomi Mi Flora Plant sensors, pushing the measurements to an MQTT server.
 
 ## Technical requirements
 
