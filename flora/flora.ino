@@ -206,7 +206,7 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   Serial.print("-- Conductivity: ");
   Serial.println(conductivity);
 
-  if (temperature > 200) {
+  if (temperature > 100 || temperature < -100) {
     Serial.println("-- Unreasonable values received, skip publish");
     return false;
   }
