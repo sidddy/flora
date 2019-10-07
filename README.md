@@ -18,7 +18,9 @@ Software:
 - MQTT Server address
 - MAC address(es) of your Xiaomi Mi Plant sensor(s)
 
-2) Open ino sketch in Arduino, compile & upload. 
+2) Open Arduino, Sketch -> Include Library -> Manage Libraries... and install ESP32 BLE library by Neil Kolban / Version 1.0.1
+
+3) Open ino sketch in Arduino, compile & upload. 
 
 ## Measuring interval
 
