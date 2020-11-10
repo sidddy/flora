@@ -20,18 +20,19 @@ Software:
 1) Copy config.h.example into config.h and update seetings according to your environment:
 - WLAN SSID and password
 - MQTT Server address
-- MAC address(es) of your Xiaomi Mi Plant sensor(s)
 
 2) Open ino sketch in Arduino, compile & upload. 
 
 ## Measuring interval
 
-The ESP32 will perform a single connection attempt to the Xiaomi Mi Plant sensor, read the sensor data & push it to the MQTT server. The ESP32 will enter deep sleep mode after all sensors have been read and sleep for X minutes before repeating the exercise...
+The ESP32 will scan BLE devices to find Xiaomi Mi Plant sensors. Then it perform a single connection attempt to the Xiaomi Mi Plant sensor, read the sensor data & push it to the MQTT server. The ESP32 will enter deep sleep mode after all sensors have been read and sleep for X minutes before repeating the exercise...
 Battery level is read every Xth wakeup.
 Up to X attempst per sensor are performed when reading the data fails.
 
 ## Configuration
 
+- MAX_DEVICES - the maximum number of devices that can be scanned at once
+- BLE_SCAN_DURATION - duration of the initial BLE scan used to look for Xiaomi Mi Plant sensors
 - SLEEP_DURATION - how long should the device sleep between sensor reads?
 - EMERGENCY_HIBERNATE - how long after wakeup should the device forcefully go to sleep (e.g. when something gets stuck)?
 - BATTERY_INTERVAL - how ofter should the battery status be read?

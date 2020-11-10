@@ -1,10 +1,8 @@
+// Max Number of devices monitored
+const int MAX_DEVICES = 20;
 
-// array of different xiaomi flora MAC addresses
-char* FLORA_DEVICES[] = {
-    "C4:7C:8D:67:11:11", 
-    "C4:7C:8D:67:22:22", 
-    "C4:7C:8D:67:33:33"
-};
+// Max duration of BLE scan (in seconds)
+const int BLE_SCAN_DURATION = 10;
 
 // sleep between to runs in seconds
 #define SLEEP_DURATION 30 * 60
