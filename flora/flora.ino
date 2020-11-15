@@ -362,9 +362,10 @@ void setup() {
     delay(1500);
   }
 
-  // disconnect wifi and mqtt
-  disconnectWifi();
+  // disconnect mqtt and wifi
   disconnectMqtt();
+  disconnectWifi();
+
 
   // delete emergency hibernate task
   vTaskDelete(hibernateTaskHandle);
