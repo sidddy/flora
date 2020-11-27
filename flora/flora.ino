@@ -206,7 +206,7 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
   Serial.print("-- Conductivity: ");
   Serial.println(conductivity);
 
-  if (temperature > 200) {
+  if (temperature > 100 || temperature < -100) {
     Serial.println("-- Unreasonable values received, skip publish");
     return false;
   }
@@ -215,12 +215,27 @@ bool readFloraDataCharacteristic(BLERemoteService* floraService, String baseTopi
 
   snprintf(buffer, 64, "%f", temperature);
   client.publish((baseTopic + "temperature").c_str(), buffer); 
+  char state[] = "{temperature:";
+  strcat(state,buffer);
+  delay(100);
   snprintf(buffer, 64, "%d", moisture); 
   client.publish((baseTopic + "moisture").c_str(), buffer);
+  strcat(state,",moisture:");
+  strcat(state,buffer);
+  delay(100);
   snprintf(buffer, 64, "%d", light);
   client.publish((baseTopic + "light").c_str(), buffer);
+  strcat(state,",light:");
+  strcat(state,buffer);
+  delay(100);
   snprintf(buffer, 64, "%d", conductivity);
   client.publish((baseTopic + "conductivity").c_str(), buffer);
+  strcat(state,",conductivity:");
+  strcat(state,buffer);
+  strcat(state,"}");
+  delay(100);
+  client.publish((baseTopic + "state").c_str(), state);
+  delay(100);
 
   return true;
 }
